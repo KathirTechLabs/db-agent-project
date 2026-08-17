@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from oracle_rule_fetcher.config import (
@@ -82,6 +84,66 @@ def test_load_rule_config_missing_sql(tmp_path):
 
 
 def test_sample_parent_config_is_valid():
-    parent = load_parent_config("config/rules.yaml")
+    config_path = Path(__file__).parent.parent / "config" / "rules.yaml"
+    parent = load_parent_config(config_path)
     assert parent.global_limit >= 1
     assert any(r.name == "active_customers" for r in parent.rules)
+
+
+def test_load_parent_config_file_not_found():
+    with pytest.raises(ConfigError, match="not found"):
+        load_parent_config("nonexistent.yaml")
+
+
+def test_load_parent_config_empty_file(tmp_path):
+    path = tmp_path / "empty.yaml"
+    path.write_text("")
+    with pytest.raises(ConfigError, match="is empty"):
+        load_parent_config(path)
+
+
+def test_load_parent_config_non_numeric_global_limit(tmp_path):
+    path = tmp_path / "rules.yaml"
+    path.write_text("global_limit: not_a_number\n")
+    with pytest.raises(ConfigError, match="global_limit.*numeric"):
+        load_parent_config(path)
+
+
+def test_load_parent_config_non_list_rules(tmp_path):
+    path = tmp_path / "rules.yaml"
+    path.write_text("global_limit: 10\nrules: foo\n")
+    with pytest.raises(ConfigError, match="rules.*list"):
+        load_parent_config(path)
+
+
+def test_load_parent_config_non_dict_rule_entry(tmp_path):
+    path = tmp_path / "rules.yaml"
+    path.write_text("global_limit: 10\nrules:\n  - null\n")
+    with pytest.raises(ConfigError, match="dict"):
+        load_parent_config(path)
+
+
+def test_load_rule_config_file_not_found():
+    with pytest.raises(ConfigError, match="not found"):
+        load_rule_config("nonexistent.yaml", "test")
+
+
+def test_load_rule_config_empty_file(tmp_path):
+    path = tmp_path / "empty.yaml"
+    path.write_text("")
+    with pytest.raises(ConfigError, match="is empty"):
+        load_rule_config(path, "test")
+
+
+def test_load_rule_config_non_numeric_limit(tmp_path):
+    path = tmp_path / "rule.yaml"
+    path.write_text("sql: SELECT 1 FROM DUAL\nlimit: not_a_number\n")
+    with pytest.raises(ConfigError, match="limit.*numeric"):
+        load_rule_config(path, "broken")
+
+
+def test_load_rule_config_non_dict_column_mapping(tmp_path):
+    path = tmp_path / "rule.yaml"
+    path.write_text("sql: SELECT 1 FROM DUAL\ncolumn_mapping: foo\n")
+    with pytest.raises(ConfigError, match="column_mapping.*dict"):
+        load_rule_config(path, "broken")
