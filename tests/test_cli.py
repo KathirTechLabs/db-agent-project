@@ -94,6 +94,32 @@ def test_run_isolates_failing_rule(tmp_path):
         now=lambda: datetime(2026, 8, 17, 14, 30, 0),
     )
 
-    # A single rule failure does not abort the run
-    assert exit_code == 0
+    # A single rule failure does not abort the run, but signals failure via exit code
+    assert exit_code == 1
     assert "ORA-00942" in log_file.read_text()
+
+
+def test_run_propagates_write_csv_failure(tmp_path, monkeypatch):
+    _write_configs(tmp_path)
+    output_dir = tmp_path / "output"
+    log_file = tmp_path / "run.log"
+
+    cursor = FakeCursor(
+        description=[("CUST_ID",), ("CUST_NAME",)],
+        rows=[(1, "Alice")],
+    )
+
+    import oracle_rule_fetcher.cli as cli_mod
+
+    monkeypatch.setattr(cli_mod, "write_csv", lambda table, path: (_ for _ in ()).throw(IOError("disk full")))
+
+    import pytest
+
+    with pytest.raises(IOError, match="disk full"):
+        run(
+            parent_path=tmp_path / "rules.yaml",
+            output_dir=output_dir,
+            log_file=log_file,
+            cursor_provider=lambda: cursor,
+            now=lambda: datetime(2026, 8, 17, 14, 30, 0),
+        )

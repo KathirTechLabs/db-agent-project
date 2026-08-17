@@ -44,25 +44,31 @@ def run(
     parent = load_parent_config(parent_path)
     base_dir = parent_path.parent
 
+    had_errors = False
+
     for entry in select_enabled(parent):
+        rule = load_rule_config(base_dir / entry.config, entry.name)  # ConfigError propagates — run-level
         try:
-            rule = load_rule_config(base_dir / entry.config, entry.name)
             cursor = cursor_provider()
             timestamp = now().isoformat()
             table = build_rule_table(cursor, rule, parent.global_limit, timestamp)
-            print(render_table(table))
-            csv_path = output_dir / f"{entry.name}.csv"
-            write_csv(table, csv_path)
-            logger.info(
-                "Rule %s: %d rows written to %s",
-                entry.name,
-                len(table.rows),
-                csv_path,
-            )
-        except Exception as exc:  # isolate per-rule failures
+        except Exception as exc:  # isolate Oracle/pipeline failures per-rule
             logger.error("Rule %s failed: %s", entry.name, exc)
+            had_errors = True
+            continue
 
-    return 0
+        # Persistence outside the try — write_csv failure is run-level
+        print(render_table(table))
+        csv_path = output_dir / f"{entry.name}.csv"
+        write_csv(table, csv_path)
+        logger.info(
+            "Rule %s: %d rows written to %s",
+            entry.name,
+            len(table.rows),
+            csv_path,
+        )
+
+    return 1 if had_errors else 0
 
 
 def main(argv=None) -> int:
