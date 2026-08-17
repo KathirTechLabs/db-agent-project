@@ -1,0 +1,7 @@
+# Parent configuration: global settings and the rule registry.
+global_limit: 100
+
+rules:
+  - name: active_customers
+    enabled: true
+    config: rules/active_customers.yaml
