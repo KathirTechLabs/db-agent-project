@@ -21,7 +21,7 @@ The project will be a small CLI package with clear module boundaries:
 
 - `config`: load and validate the parent config and individual rule config files
 - `rules`: represent rule definitions and selection logic
-- `db`: Oracle connection and query execution
+- `db`: Oracle connection (from environment variables) and query execution
 - `transform`: rename/map columns and normalize rows
 - `render`: print tables in the terminal
 - `export`: write CSV output
@@ -72,12 +72,36 @@ mapping live in the rule's own file rather than in the parent. A rule with no
 - Otherwise, use `global_limit` from the parent config.
 - Limits apply per rule, not across the full run.
 
+### Database connection
+
+Oracle connection details are supplied through environment variables, not
+config files, so credentials stay out of version control:
+
+- `ORACLE_USER`: database username
+- `ORACLE_PASSWORD`: database password
+- `ORACLE_DSN`: data source name (host, port, and service name)
+
+The application reads these at startup and fails fast with a clear message if
+any required variable is missing. A `.env.example` file documents the expected
+variables for local setup.
+
+### Sample configuration
+
+The repository ships sample config files for reference and testing:
+
+- a sample parent config registering one or more example rules
+- a sample individual rule config with an example query and column mapping
+- a `.env.example` documenting the database environment variables
+
+These samples double as fixtures for the config-loading tests.
+
 ## Data flow
 
 1. CLI starts and loads the parent config file.
 2. The parent config and each enabled rule's config file are validated before any database connection is opened.
-3. Enabled rules are collected from the parent registry, and each rule's individual config file is loaded.
-4. For each rule:
+3. Database connection settings are read from environment variables and checked for completeness.
+4. Enabled rules are collected from the parent registry, and each rule's individual config file is loaded.
+5. For each rule:
    - execute the rule SQL against Oracle
    - apply the effective row limit
    - rename columns using the rule's column mapping
@@ -92,6 +116,7 @@ application recording when the row was fetched.
 ## Error handling
 
 - Fail fast on invalid config or missing required config fields.
+- Fail fast with a clear message when required database environment variables are missing.
 - Surface Oracle connection/query failures clearly with rule context.
 - Skip only the failing rule when the error is isolated to one rule; continue processing other enabled rules.
 - Treat output path or logging failures as run-level failures because they affect persistence.
@@ -105,6 +130,7 @@ Planned tests will cover:
 - parent-to-rule config resolution (loading referenced rule files)
 - rule enable/disable behavior
 - global and per-rule limit resolution
+- database environment variable validation
 - column name mapping
 - CSV export formatting
 - terminal table rendering
