@@ -181,9 +181,16 @@ async def run_search(csv_path: Path, screenshots_dir: Path) -> int:
     csv_stem = csv_path.stem
 
     async with async_playwright() as pw:
+        # Use Chromium's "new" headless mode. The legacy headless mode is
+        # fingerprinted and blocked (HTTP 403) by MarketScreener's Akamai WAF.
+        # Passing headless=False prevents Playwright from injecting the legacy
+        # --headless flag, while --headless=new keeps the browser headless.
         browser = await pw.chromium.launch(
-            headless=True,
-            args=["--disable-blink-features=AutomationControlled"],
+            headless=False,
+            args=[
+                "--headless=new",
+                "--disable-blink-features=AutomationControlled",
+            ],
         )
         context = await browser.new_context(
             user_agent=(
