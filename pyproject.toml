@@ -5,12 +5,14 @@ description = "Fetch Oracle data based on configurable rules"
 requires-python = ">=3.11"
 dependencies = [
     "oracledb>=2.0",
+    "playwright>=1.40",
     "PyYAML>=6.0",
     "tabulate>=0.9",
 ]
 
 [project.scripts]
 oracle-rule-fetcher = "oracle_rule_fetcher.cli:main"
+instrument-search = "oracle_rule_fetcher.instrument_search:main"
 
 [dependency-groups]
 dev = [

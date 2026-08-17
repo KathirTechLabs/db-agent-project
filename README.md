@@ -42,3 +42,26 @@ timestamp column) and appends a timestamped line to the log file.
 uv run pytest -v                       # full suite
 uv run pytest tests/test_config.py -v  # a single test file
 ```
+
+## Instrument Search
+
+Reads a CSV file's `instrument` column, looks up each instrument on
+[MarketScreener NL](https://nl.marketscreener.com/), extracts the current
+price, and writes it back to the CSV in a `Web_Price` column. A screenshot
+is saved for each instrument found.
+
+### Setup (one-time)
+
+```bash
+uv run playwright install chromium
+```
+
+### Usage
+
+```bash
+uv run instrument-search --csv data/orders-onhold.csv
+uv run instrument-search --csv data/orders-onhold.csv --screenshots-dir my_screenshots
+```
+
+Screenshots are saved to `screenshots/<csv_stem>/<csv_stem>-<instrument>-<row>.png`
+by default.
