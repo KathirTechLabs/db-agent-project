@@ -19,7 +19,7 @@ The CLI prints a terminal table, writes each rule's rows to a CSV file, and appe
 
 The project will be a small CLI package with clear module boundaries:
 
-- `config`: load and validate YAML config
+- `config`: load and validate the parent config and individual rule config files
 - `rules`: represent rule definitions and selection logic
 - `db`: Oracle connection and query execution
 - `transform`: rename/map columns and normalize rows
@@ -37,33 +37,46 @@ Key runtime dependencies:
 
 ## Configuration model
 
-Use YAML for all runtime configuration.
+Use YAML for all runtime configuration, split into two tiers.
 
-Planned structure:
+### Parent configuration file
+
+A single parent config file is the entry point. It holds global settings and
+the rule registry:
 
 - `global_limit`: default maximum rows per rule when a rule does not set its own limit
-- `rules`: list of rule entries
+- `rules`: list of registered rules
   - `name`: unique rule identifier
   - `enabled`: whether the rule runs
-  - `sql`: the rule's SQL query
-  - `limit` (optional): per-rule row limit override
-  - `column_mapping` (optional): map this rule's Oracle column names to functional names
+  - `config`: path to this rule's individual config file
 
-Because every rule is unique and has its own query, column mapping is defined
-per rule rather than globally. A rule with no `column_mapping` keeps the raw
-column names returned by its query.
+Adding a rule means adding an entry here and creating its rule config file.
+Removing or disabling a rule is an edit to this file only.
 
-Limit behavior:
+### Individual rule configuration files
 
-- If a rule defines `limit`, use it.
-- Otherwise, use `global_limit`.
+Each rule has its own config file, referenced from the parent. It holds
+everything specific to that rule:
+
+- `sql`: the rule's SQL query
+- `limit` (optional): per-rule row limit override
+- `column_mapping` (optional): map this rule's Oracle column names to functional names
+
+Because every rule is unique and has its own query, its query and column
+mapping live in the rule's own file rather than in the parent. A rule with no
+`column_mapping` keeps the raw column names returned by its query.
+
+### Limit behavior
+
+- If a rule config defines `limit`, use it.
+- Otherwise, use `global_limit` from the parent config.
 - Limits apply per rule, not across the full run.
 
 ## Data flow
 
-1. CLI starts and loads YAML config.
-2. Config is validated before any database connection is opened.
-3. Enabled rules are collected.
+1. CLI starts and loads the parent config file.
+2. The parent config and each enabled rule's config file are validated before any database connection is opened.
+3. Enabled rules are collected from the parent registry, and each rule's individual config file is loaded.
 4. For each rule:
    - execute the rule SQL against Oracle
    - apply the effective row limit
@@ -87,7 +100,9 @@ application recording when the row was fetched.
 
 Planned tests will cover:
 
-- YAML config parsing and validation
+- parent config parsing and validation
+- individual rule config parsing and validation
+- parent-to-rule config resolution (loading referenced rule files)
 - rule enable/disable behavior
 - global and per-rule limit resolution
 - column name mapping
