@@ -1,5 +1,5 @@
 # Individual rule configuration: query, optional limit, and column mapping.
-sql: >
+sql: |
   SELECT CUST_ID, CUST_NAME, SIGNUP_DATE
   FROM CUSTOMERS
   WHERE STATUS = 'ACTIVE'
