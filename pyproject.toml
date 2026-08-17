@@ -1,0 +1,29 @@
+[project]
+name = "oracle-rule-fetcher"
+version = "0.1.0"
+description = "Fetch Oracle data based on configurable rules"
+requires-python = ">=3.11"
+dependencies = [
+    "oracledb>=2.0",
+    "PyYAML>=6.0",
+    "tabulate>=0.9",
+]
+
+[project.scripts]
+oracle-rule-fetcher = "oracle_rule_fetcher.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/oracle_rule_fetcher"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
