@@ -174,21 +174,10 @@ def test_write_csv_atomic_preserves_column_order(tmp_path):
 
 
 class _FakeLocatorFirst:
-    """Simulates page.locator(...).first"""
+    """Simulates page.locator(...).first — used only for extract_price tests."""
 
-    def __init__(self, *, suggestion_href=None, price_text=None, should_timeout=False):
-        self._href = suggestion_href
+    def __init__(self, *, price_text=None):
         self._price = price_text
-        self._timeout = should_timeout
-
-    async def wait_for(self, timeout=None):
-        if self._timeout:
-            from playwright.async_api import TimeoutError as PlaywrightTimeout
-
-            raise PlaywrightTimeout("Timeout")
-
-    async def get_attribute(self, name):
-        return self._href if name == "data-href" else None
 
     async def text_content(self, timeout=None):
         return self._price
@@ -212,17 +201,24 @@ class FakePage:
         self.wait_for_function = AsyncMock()
         self.wait_for_timeout = AsyncMock()
         self.screenshot = AsyncMock()
-        self.evaluate = AsyncMock(return_value=None)
         self.url = "https://nl.marketscreener.com/"
+
+        # get_attribute returns a dummy search token for input#autocomplete
+        self.get_attribute = AsyncMock(return_value="dummy-search-type")
+
+        # evaluate is called twice: first to read page tokens, then for the API fetch
+        async def _evaluate(script, args=None):
+            if args is None:
+                # First call: reading searchType + token from the page
+                return {"searchType": "dummy-search-type", "token": "dummy-token"}
+            # Second call: the search API fetch - return href or None
+            return None if self._no_suggestion else self._href
+
+        self.evaluate = AsyncMock(side_effect=_evaluate)
 
     def locator(self, selector):
         loc = MagicMock()
-        if "tr[data-href]" in selector:
-            loc.first = _FakeLocatorFirst(
-                suggestion_href=self._href,
-                should_timeout=self._no_suggestion,
-            )
-        elif 'td.is__realtime-last span[data-field="last"]' in selector:
+        if 'td.is__realtime-last span[data-field="last"]' in selector:
             loc.first = _FakeLocatorFirst(price_text=self._price)
         return loc
 
@@ -249,13 +245,14 @@ def test_search_instrument_returns_false_when_no_suggestion():
     page.goto.assert_not_awaited()
 
 
-def test_search_instrument_fills_search_input():
+def test_search_instrument_calls_api_with_instrument_name():
+    """The second evaluate call passes instrument name, search-type, and token to the JS fetch."""
     page = FakePage(suggestion_href="/koers/aandeel/TEST/")
     run_async(search_instrument(page, "MY_INSTRUMENT"))
-    page.evaluate.assert_awaited_once()
-    js_call_args = page.evaluate.call_args[0]
-    # second positional arg is the instrument value passed to JS
-    assert js_call_args[1] == "MY_INSTRUMENT"
+    assert page.evaluate.await_count == 2  # first: read tokens; second: API fetch
+    api_call_args = page.evaluate.call_args_list[1][0]  # positional args of 2nd call
+    # second positional arg is [instrument, searchType, token] list
+    assert api_call_args[1][0] == "MY_INSTRUMENT"
 
 
 # ---------------------------------------------------------------------------

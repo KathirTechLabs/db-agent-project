@@ -68,36 +68,67 @@ def write_csv_atomic(csv_path: Path, fieldnames: list[str], rows: list[dict]) ->
 
 
 async def search_instrument(page, instrument: str) -> bool:
-    """Fill the MarketScreener search, wait up to 3s for autocomplete, navigate to
-    the first suggestion. Returns True if navigated, False if no suggestion appeared."""
-    from playwright.async_api import TimeoutError as PlaywrightTimeout
+    """Call MarketScreener's search API with correct field names, encoding and CSRF token.
+    Uses a same-origin fetch with a 3-second JS-side AbortController.
+    Returns True if navigated to a result page, False if no result."""
+    import asyncio
 
-    # Fill via JS to bypass any overlay visibility issues
-    await page.evaluate(
-        """(value) => {
-            const input = document.getElementById('autocomplete');
-            if (input) {
-                input.value = value;
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-                input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
-            }
-        }""",
-        instrument,
+    # Read both tokens from the live page in one evaluate call
+    page_tokens = await page.evaluate(
+        """() => ({
+            searchType: document.getElementById('autocomplete')
+                ?.getAttribute('data-search-type') || '',
+            token: document.getElementById('csrf-token')?.value || ''
+        })"""
     )
+    search_type = page_tokens.get("searchType", "")
+    csrf_token = page_tokens.get("token", "")
 
-    first_row = page.locator("#header-search-result-container tr[data-href]").first
     try:
-        await first_row.wait_for(timeout=3000)
-    except PlaywrightTimeout:
+        href = await asyncio.wait_for(
+            page.evaluate(
+                """async ([q, searchType, token]) => {
+                    const params = new URLSearchParams();
+                    params.append('search', q);
+                    params.append('search-type', searchType);
+                    params.append('token', token);
+                    const ctrl = new AbortController();
+                    const timer = setTimeout(() => ctrl.abort(), 2800);
+                    try {
+                        const r = await fetch('/async/search/quick', {
+                            method: 'POST',
+                            body: params.toString(),
+                            headers: {
+                                'Content-Type':
+                                    'application/x-www-form-urlencoded; charset=UTF-8',
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            signal: ctrl.signal
+                        });
+                        clearTimeout(timer);
+                        const json = await r.json();
+                        if (json.error) return null;
+                        const div = document.createElement('div');
+                        div.innerHTML = json.data;
+                        const row = div.querySelector('tr[data-href]');
+                        return row ? row.getAttribute('data-href') : null;
+                    } catch (e) {
+                        return null;
+                    }
+                }""",
+                [instrument, search_type, csrf_token],
+            ),
+            timeout=3.5,  # Python-side; JS aborts at 2.8s
+        )
+    except asyncio.TimeoutError:
         logger.warning(
             "No autocomplete suggestion for %r within 3 seconds — skipping", instrument
         )
         return False
 
-    href = await first_row.get_attribute("data-href")
     if not href:
         logger.warning(
-            "First autocomplete row has no data-href for %r — skipping", instrument
+            "No autocomplete suggestion for %r within 3 seconds — skipping", instrument
         )
         return False
 
@@ -150,7 +181,18 @@ async def run_search(csv_path: Path, screenshots_dir: Path) -> int:
     csv_stem = csv_path.stem
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=True)
+        browser = await pw.chromium.launch(
+            headless=True,
+            args=["--disable-blink-features=AutomationControlled"],
+        )
+        context = await browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/148.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1280, "height": 720},
+        )
         try:
             for idx, row in enumerate(rows):
                 instrument = row.get("instrument", "").strip()
@@ -159,20 +201,23 @@ async def run_search(csv_path: Path, screenshots_dir: Path) -> int:
                     had_errors = True
                     continue
 
-                page = await browser.new_page()
+                page = await context.new_page()
                 try:
-                    # Navigate to homepage
+                    # Wait for full page load so scripts (jQuery autocomplete) are ready
                     await page.goto(
                         "https://nl.marketscreener.com/",
-                        wait_until="domcontentloaded",
+                        wait_until="load",
                     )
 
-                    # Accept cookie consent if shown (non-blocking)
+                    # Accept cookie consent if shown (non-blocking; covers French/Dutch)
                     try:
                         accept_btn = page.locator(
-                            'button:has-text("Accepter"), button:has-text("Accepteren")'
+                            'button:has-text("Accepter"), '
+                            'button:has-text("Accepteren"), '
+                            'button:has-text("Accept"), '
+                            'button:has-text("Akkoord")'
                         ).first
-                        await accept_btn.wait_for(timeout=2000)
+                        await accept_btn.wait_for(timeout=3000)
                         await accept_btn.click()
                         await page.wait_for_timeout(500)
                     except PlaywrightTimeout:
@@ -234,6 +279,7 @@ async def run_search(csv_path: Path, screenshots_dir: Path) -> int:
                 finally:
                     await page.close()
         finally:
+            await context.close()
             await browser.close()
 
     write_csv_atomic(csv_path, fieldnames, rows)
