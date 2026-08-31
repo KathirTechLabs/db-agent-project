@@ -86,6 +86,10 @@ def run(
             )
             if rule_had_errors:
                 had_errors = True
+                error_idx = table.columns.index("error")
+                for row in table.rows:
+                    if row[error_idx]:
+                        logger.warning("Rule %s record skipped: %s", entry.name, row[error_idx])
 
         print(render_table(table))
         csv_path = output_dir / f"{entry.name}.csv"

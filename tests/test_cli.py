@@ -238,3 +238,40 @@ def test_run_fails_fast_on_input_config_mismatch(tmp_path):
             input_config_path=tmp_path / "input_config.yaml",
             now=lambda: datetime(2026, 8, 17, 14, 30, 0),
         )
+
+
+def test_run_csv_mode_logs_skipped_records(tmp_path):
+    _write_csv_mode_configs(tmp_path)
+    output_dir = tmp_path / "output"
+    log_file = tmp_path / "run.log"
+
+    class PartiallyFailingCursor:
+        def __init__(self):
+            self.description = [("ACCOUNT_ID",), ("BALANCE",)]
+            self._current = []
+
+        def execute(self, sql, params=None):
+            sip = params["sip_id"]
+            if sip == "1003":
+                raise RuntimeError("ORA-00942: table or view does not exist")
+            self._current = [(int(sip), int(sip) * 10)]
+
+        def fetchmany(self, size):
+            return self._current[:size]
+
+    exit_code = run(
+        parent_path=tmp_path / "rules.yaml",
+        output_dir=output_dir,
+        log_file=log_file,
+        cursor_provider=PartiallyFailingCursor,
+        input_config_path=tmp_path / "input_config.yaml",
+        now=lambda: datetime(2026, 8, 31, 12, 0, 0),
+    )
+
+    assert exit_code == 1
+    content = (output_dir / "rsb_sip.csv").read_text()
+    assert "Skipped-" in content
+
+    log_content = log_file.read_text()
+    assert "rsb_sip" in log_content
+    assert "Skipped-" in log_content
