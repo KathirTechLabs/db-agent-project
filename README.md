@@ -27,6 +27,29 @@ Set the database connection via environment variables:
 To add a rule: add an entry to `config/rules.yaml` and create its rule file.
 To disable a rule: set `enabled: false` in the parent config.
 
+## CSV-driven rules (optional)
+
+A rule can be driven by an input CSV file instead of running its SQL once.
+Add an entry to `config/input_config.yaml` keyed by the rule name:
+
+- `file`: path to the input CSV (relative to the working directory).
+- `column_headers_exist`: `true` = first row is a header of column names;
+  `false` = first row is data (reference columns by 1-based number).
+- `filter_columns` (optional): conditions ANDed together; each has `column`
+  (1-based number or header name), `operator`
+  (`eq`, `ne`, `in`, `gt`, `lt`, `gte`, `lte`), and `value` (`in` takes a list).
+- `query_parameters`: maps a CSV column (number or header name) to the SQL
+  reference variable used as a named bind (`:name`) in the rule's `sql`.
+
+Each surviving CSV record runs the rule SQL once with its values bound. The
+output CSV aggregates all records and adds the mapped input columns, the mapped
+result columns, `fetched_at`, and an `error` column (`Skipped-<details>` for a
+record whose query failed). Keys in `input_config.yaml` must match both a rule
+in `config/rules.yaml` and a `config/rules/<key>.yaml` file, or the run aborts.
+
+Rules without an `input_config.yaml` entry keep the default single-query
+behavior. Pass a custom path with `--input-config`.
+
 ## Usage
 
 ```bash

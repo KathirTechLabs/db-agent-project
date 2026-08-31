@@ -1,0 +1,8 @@
+# CSV-driven rule: SQL uses named binds populated per input CSV record.
+sql: |
+  SELECT ACCOUNT_ID, BALANCE
+  FROM ACCOUNTS
+  WHERE SIP_ID = :sip_id AND REGION = :region
+column_mapping:
+  ACCOUNT_ID: account_id
+  BALANCE: balance

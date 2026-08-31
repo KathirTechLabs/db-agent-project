@@ -111,3 +111,15 @@ def test_validate_input_config_missing_rule_file_raises(tmp_path):
     cfg = InputConfig(inputs={"rsb_sip": InputEntry("rsb_sip", "f.csv", False, [], {})})
     with pytest.raises(ConfigError, match="rule file"):
         validate_input_config(cfg, _parent(), tmp_path)
+
+
+def test_sample_input_config_validates():
+    from oracle_rule_fetcher.config import load_parent_config
+
+    root = Path(__file__).parent.parent
+    parent = load_parent_config(root / "config" / "rules.yaml")
+    cfg = load_input_config(root / "config" / "input_config.yaml")
+    assert "rsb_sip" in cfg.inputs
+    entry = cfg.inputs["rsb_sip"]
+    assert entry.query_parameters == {1: "sip_id", 2: "region"}
+    validate_input_config(cfg, parent, root / "config")  # no raise

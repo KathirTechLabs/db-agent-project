@@ -1,0 +1,13 @@
+# CSV input configuration. Each key must match a rule name in rules.yaml and
+# a file under config/rules/<key>.yaml.
+inputs:
+  rsb_sip:
+    file: input/rsb/alm_apo.csv
+    column_headers_exist: false      # top row is data; reference columns by 1-based number
+    filter_columns:                  # keep only rows whose 3rd column equals "APO"
+      - column: 3
+        operator: eq
+        value: "APO"
+    query_parameters:                # CSV column (number) -> SQL reference variable
+      1: sip_id
+      2: region
