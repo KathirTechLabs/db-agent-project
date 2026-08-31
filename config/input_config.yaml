@@ -1,0 +1,8 @@
+input:
+  - rsb_sip: input/rsb/alm_apo.csv
+    column_headers_exist: false
+    filter_columns: 3,21
+    # column_headers_exist: true
+    # filter_columns: product,amount
+    query_mapping_columns: 1:account_no,3:product
+    # query_mapping_columns: account_no,product

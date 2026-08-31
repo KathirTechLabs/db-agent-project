@@ -1,0 +1,11 @@
+# Individual rule configuration: query, optional limit, and column mapping.
+sql: |
+  SELECT CUST_ID, CUST_NAME, SIGNUP_DATE
+  FROM CUSTOMERS
+  WHERE ACCOUNT_NUMBER = '{account_no}'
+  AND PRODUCT_ID = '{product}'
+limit: 25
+column_mapping:
+  CUST_ID: customer_id
+  CUST_NAME: customer_name
+  SIGNUP_DATE: signup_date
