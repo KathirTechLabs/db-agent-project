@@ -53,9 +53,9 @@ inputs:
       - column: 5
         operator: in
         value: ["A", "B"]
-    query_parameters:                # SQL bind name -> CSV column (number or name)
-      sip_id: 1
-      region: 2
+    query_parameters:                # CSV column (number or name) -> SQL reference variable
+      1: sip_id                       # column 1 in the CSV binds to :sip_id in the rule SQL
+      2: region                       # column 2 in the CSV binds to :region
 ```
 
 Field semantics:
@@ -71,13 +71,19 @@ Field semantics:
     exist).
   - `operator`: one of `eq`, `ne`, `in`, `gt`, `lt`, `gte`, `lte`.
   - `value`: scalar for all operators except `in`, which takes a list.
-- `query_parameters` (optional but expected in CSV mode): maps each SQL bind
-  name to a CSV column (1-based number or header name).
+- `query_parameters` (optional but expected in CSV mode): maps each **CSV
+  column** (the key: a 1-based number, or a header name when headers exist) to
+  the **SQL reference variable** (the value: the bind name used in the rule
+  `sql`, without the leading colon). For example `1: sip_id` binds CSV column 1
+  to `:sip_id`; `cust_id: customer_id` binds the CSV column named `cust_id` to
+  `:customer_id`. The CSV side may be a number or a name; the SQL side is always
+  a reference variable.
 
 ### Rule file uses named binds
 
 The referenced `config/rules/<key>.yaml` is a normal rule file whose `sql` uses
-named bind parameters matching `query_parameters` keys:
+named bind parameters matching the **values** in `query_parameters` (the SQL
+reference variables):
 
 ```yaml
 sql: |
@@ -90,10 +96,11 @@ column_mapping:
 
 ### Column reference rules
 
-- Numeric references are **1-based** (first column = 1) in both
-  `filter_columns` and `query_parameters`.
-- Name references are allowed only when `column_headers_exist: true`; using a
-  name with no headers is a config error.
+- Numeric references are **1-based** (first column = 1). This applies to the
+  `column` in `filter_columns` and to the CSV-side key in `query_parameters`.
+- Name references (header name in `filter_columns.column` or in the
+  `query_parameters` key) are allowed only when `column_headers_exist: true`;
+  using a name with no headers is a config error.
 - A reference (number out of range, or unknown name) is a config/validation
   error surfaced with the rule key.
 
@@ -116,9 +123,11 @@ New modules:
   `query_parameters`). Missing file returns an empty `InputConfig` (CSV mode is
   optional); malformed content raises `ConfigError`.
 - `csv_source.py`: reads a CSV honoring `column_headers_exist`, resolves column
-  references, applies `filter_columns`, and yields per-record bind-parameter
-  dicts (`{bind_name: value}`). Also exposes each record's raw values for error
-  reporting.
+  references (the CSV-side keys of `filter_columns.column` and
+  `query_parameters`), applies `filter_columns`, and yields per-record
+  bind-parameter dicts keyed by the SQL reference variable
+  (`{reference_variable: value}`). Also exposes each record's mapped input values
+  for the output row and error reporting.
 
 Changed modules:
 
@@ -147,20 +156,27 @@ run before DB work. (Rules present in `rules.yaml` but absent from
 
 ## Output behavior
 
-In CSV mode the output CSV contains, in this order, for every record: the
-**mapped CSV input columns** (the values bound into the query), the **mapped
+In CSV mode the query is executed once per surviving CSV record, and the rule's
+single output CSV aggregates the results of **all** iterations. Each record
+normally contributes **one output line**. In this order, every line contains:
+the **mapped CSV input columns** (the values bound into the query), the **mapped
 query-result columns**, the existing `fetched_at` timestamp column, and a
-trailing `error` column. All records' rows go into the rule's single output
-file.
+trailing `error` column.
 
-- Input columns are the `query_parameters` entries, headed by their bind names
-  (e.g. `sip_id`, `region`). Because they come straight from the CSV record,
-  they are always present and filled — even for skipped records.
-- Successful record: input columns filled, result columns filled, `error` empty.
-- Skipped record (its query raised): input columns filled, result columns empty,
-  `error` set to `Skipped-<details>`, where `<details>` includes the exception
-  message (e.g. `Skipped-ORA-00942: table or view does not exist`). The input
-  columns already identify which record failed.
+- Input columns are the `query_parameters` entries, headed by their SQL
+  reference variables (e.g. `sip_id`, `region`). Because they come straight from
+  the CSV record, they are always present and filled — even for skipped records.
+- Successful record (query returns one row): input columns filled, result
+  columns filled, `error` empty — one output line.
+- Record whose query returns multiple rows: one output line per returned row,
+  each repeating that record's input columns.
+- Record whose query returns no rows: one output line with input columns filled
+  and result columns empty (`error` empty).
+- Skipped record (its query raised): one output line with input columns filled,
+  result columns empty, and `error` set to `Skipped-<details>`, where
+  `<details>` includes the exception message (e.g.
+  `Skipped-ORA-00942: table or view does not exist`). The input columns already
+  identify which record failed.
 
 The input-column set is fixed and known upfront from `query_parameters`. The
 result-column set is established from the **first successful** execution
@@ -198,14 +214,19 @@ one query, all rows.
 - `input_config.py`: valid parse; missing file yields empty config; malformed
   structure raises `ConfigError`; name reference without headers is rejected.
 - `csv_source.py`: read with and without headers; column reference by number
-  (1-based) and by name; each operator (`eq`, `ne`, `in`, `gt`, `lt`, `gte`,
-  `lte`); numeric vs. string comparison; no-filter case keeps all rows;
-  per-record bind dict construction.
+  (1-based) and by name; `query_parameters` maps CSV column (key) to SQL
+  reference variable (value) — verify by number and by name; each operator
+  (`eq`, `ne`, `in`, `gt`, `lt`, `gte`, `lte`); numeric vs. string comparison;
+  no-filter case keeps all rows; per-record bind dict keyed by reference
+  variable.
 - `db.py`: `fetch_rows` forwards bind params to `cursor.execute`.
-- `pipeline.py`: per-record execution accumulates rows; input columns prepended
-  and result columns mapped; `fetched_at` and `error` columns present; a failing
-  record produces a `Skipped-...` row (with its input columns filled) while
-  others succeed; all-fail case yields input + error rows with no result
+- `pipeline.py`: per-record execution aggregates all iterations into one table;
+  input columns prepended and result columns mapped; one output line per record
+  in the common single-row case; a record returning multiple rows yields one
+  line per row (input columns repeated); a record returning no rows yields one
+  line with empty result columns; `fetched_at` and `error` columns present; a
+  failing record produces a `Skipped-...` row (with its input columns filled)
+  while others succeed; all-fail case yields input + error rows with no result
   columns.
 - Startup validation: mismatched key (missing rule entry, or missing rule file)
   aborts before DB work with the key named.
