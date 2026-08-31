@@ -6,8 +6,9 @@ Add an optional **CSV input mode** to the Oracle Rule Fetcher. Today every
 enabled rule runs its SQL once and writes all returned rows. This feature lets a
 rule instead be driven by an input CSV file: the CSV is read, its rows are
 optionally filtered, and the rule's SQL is executed **once per surviving
-record** with values from that record bound as named parameters. All per-record
-query results are appended into the rule's single output CSV.
+record** with values from that record bound as named parameters. Each record's
+mapped input values and query results are appended into the rule's single output
+CSV.
 
 A new config file `config/input_config.yaml` maps a rule name to its CSV file
 and the filtering / parameter-binding details. Rules without a matching entry in
@@ -124,9 +125,10 @@ Changed modules:
 - `db.py`: `fetch_rows(cursor, sql, limit, params=None)` passes binds to
   `cursor.execute` (call unchanged when `params` is `None`).
 - `pipeline.py`: add `build_rule_table_from_csv(cursor, rule, entry, global_limit,
-  timestamp)` that iterates records, executes SQL per record, accumulates result
-  rows, applies existing `column_mapping`, and appends `fetched_at` plus an
-  `error` column. Existing `build_rule_table` is untouched.
+  timestamp)` that iterates records, executes SQL per record, prepends the mapped
+  input columns to each result row, applies the existing `column_mapping` to the
+  result columns, and appends `fetched_at` plus an `error` column. Existing
+  `build_rule_table` is untouched.
 - `cli.py`: add `--input-config` (default `config/input_config.yaml`). Load it,
   run startup validation, then for each enabled rule choose CSV mode vs. normal
   mode by presence of a matching input entry.
@@ -145,22 +147,30 @@ run before DB work. (Rules present in `rules.yaml` but absent from
 
 ## Output behavior
 
-In CSV mode the output CSV contains the **mapped query-result columns**, the
-existing `fetched_at` timestamp column, and a trailing `error` column:
+In CSV mode the output CSV contains, in this order, for every record: the
+**mapped CSV input columns** (the values bound into the query), the **mapped
+query-result columns**, the existing `fetched_at` timestamp column, and a
+trailing `error` column. All records' rows go into the rule's single output
+file.
 
-- Successful record: result columns filled, `error` empty.
-- Skipped record (its query raised): result columns empty, `error` set to
-  `Skipped-<details>`, where `<details>` includes the exception message and the
-  record's bind values for traceability
-  (e.g. `Skipped-ORA-00942: table or view does not exist (sip_id=1, region=X)`).
+- Input columns are the `query_parameters` entries, headed by their bind names
+  (e.g. `sip_id`, `region`). Because they come straight from the CSV record,
+  they are always present and filled — even for skipped records.
+- Successful record: input columns filled, result columns filled, `error` empty.
+- Skipped record (its query raised): input columns filled, result columns empty,
+  `error` set to `Skipped-<details>`, where `<details>` includes the exception
+  message (e.g. `Skipped-ORA-00942: table or view does not exist`). The input
+  columns already identify which record failed.
 
-The result-column set is established from the **first successful** execution
-(`cursor.description`). Skipped rows encountered before that are buffered and
-filled once the columns are known. If **no** record succeeds, the output carries
-only `fetched_at` and `error` columns, one error row per record.
+The input-column set is fixed and known upfront from `query_parameters`. The
+result-column set is established from the **first successful** execution
+(`cursor.description`); skipped rows seen before that are buffered and filled
+once the result columns are known. If **no** record succeeds, the output carries
+the input columns plus `fetched_at` and `error` (no result columns), one row per
+record.
 
-Normal-mode rules (no input entry) are unchanged: no `error` column, one query,
-all rows.
+Normal-mode rules (no input entry) are unchanged: no input or `error` columns,
+one query, all rows.
 
 ## Limits and error handling
 
@@ -192,9 +202,11 @@ all rows.
   `lte`); numeric vs. string comparison; no-filter case keeps all rows;
   per-record bind dict construction.
 - `db.py`: `fetch_rows` forwards bind params to `cursor.execute`.
-- `pipeline.py`: per-record execution accumulates rows; column mapping applied;
-  `fetched_at` and `error` columns present; a failing record produces a
-  `Skipped-...` row while others succeed; all-fail case yields error-only rows.
+- `pipeline.py`: per-record execution accumulates rows; input columns prepended
+  and result columns mapped; `fetched_at` and `error` columns present; a failing
+  record produces a `Skipped-...` row (with its input columns filled) while
+  others succeed; all-fail case yields input + error rows with no result
+  columns.
 - Startup validation: mismatched key (missing rule entry, or missing rule file)
   aborts before DB work with the key named.
 - `cli.py`: end-to-end CSV-mode run writes the expected combined output; a rule
