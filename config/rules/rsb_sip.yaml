@@ -1,11 +1,8 @@
-# Individual rule configuration: query, optional limit, and column mapping.
+# CSV-driven rule: SQL uses named binds populated per input CSV record.
 sql: |
-  SELECT CUST_ID, CUST_NAME, SIGNUP_DATE
-  FROM CUSTOMERS
-  WHERE ACCOUNT_NUMBER = '{account_no}'
-  AND PRODUCT_ID = '{product}'
-limit: 25
+  SELECT ACCOUNT_ID, BALANCE
+  FROM ACCOUNTS
+  WHERE SIP_ID = :sip_id AND REGION = :region
 column_mapping:
-  CUST_ID: customer_id
-  CUST_NAME: customer_name
-  SIGNUP_DATE: signup_date
+  ACCOUNT_ID: account_id
+  BALANCE: balance
