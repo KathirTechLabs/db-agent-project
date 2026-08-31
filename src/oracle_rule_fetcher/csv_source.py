@@ -74,7 +74,7 @@ def _passes(row: list[str], conditions: list[FilterCondition], headers, headers_
 
 def load_csv_records(entry: InputEntry) -> list[CsvRecord]:
     with Path(entry.file).open(newline="") as f:
-        rows = list(csv.reader(f))
+        rows = list(csv.reader(f, delimiter=entry.delimiter))
 
     headers: list[str] = []
     if entry.column_headers_exist:

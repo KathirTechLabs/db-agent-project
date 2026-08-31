@@ -122,4 +122,35 @@ def test_sample_input_config_validates():
     assert "rsb_sip" in cfg.inputs
     entry = cfg.inputs["rsb_sip"]
     assert entry.query_parameters == {1: "sip_id", 2: "region"}
+    assert entry.delimiter == "|"
     validate_input_config(cfg, parent, root / "config")  # no raise
+
+
+def test_load_input_config_delimiter_default_and_explicit(tmp_path):
+    path = tmp_path / "input_config.yaml"
+    path.write_text(
+        "inputs:\n"
+        "  a:\n"
+        "    file: a.csv\n"
+        "    column_headers_exist: false\n"
+        "  b:\n"
+        "    file: b.csv\n"
+        "    column_headers_exist: false\n"
+        "    delimiter: '|'\n"
+    )
+    cfg = load_input_config(path)
+    assert cfg.inputs["a"].delimiter == ","
+    assert cfg.inputs["b"].delimiter == "|"
+
+
+def test_load_input_config_invalid_delimiter_raises(tmp_path):
+    path = tmp_path / "input_config.yaml"
+    path.write_text(
+        "inputs:\n"
+        "  a:\n"
+        "    file: a.csv\n"
+        "    column_headers_exist: false\n"
+        "    delimiter: '||'\n"
+    )
+    with pytest.raises(ConfigError, match="delimiter"):
+        load_input_config(path)

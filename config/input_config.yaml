@@ -4,6 +4,7 @@ inputs:
   rsb_sip:
     file: input/rsb/alm_apo.csv
     column_headers_exist: false      # top row is data; reference columns by 1-based number
+    delimiter: "|"                   # input CSV is pipe-delimited
     filter_columns:                  # keep only rows whose 3rd column equals "APO"
       - column: 3
         operator: eq

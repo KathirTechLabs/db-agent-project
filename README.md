@@ -35,6 +35,8 @@ Add an entry to `config/input_config.yaml` keyed by the rule name:
 - `file`: path to the input CSV (relative to the working directory).
 - `column_headers_exist`: `true` = first row is a header of column names;
   `false` = first row is data (reference columns by 1-based number).
+- `delimiter` (optional): the field separator for the input file, a single
+  character. Defaults to `,`. For example, use `"|"` for pipe-delimited files.
 - `filter_columns` (optional): conditions ANDed together; each has `column`
   (1-based number or header name), `operator`
   (`eq`, `ne`, `in`, `gt`, `lt`, `gte`, `lte`), and `value` (`in` takes a list).

@@ -23,6 +23,7 @@ class InputEntry:
     column_headers_exist: bool
     filter_columns: list[FilterCondition] = field(default_factory=list)
     query_parameters: dict = field(default_factory=dict)
+    delimiter: str = ","
 
 
 @dataclass
@@ -95,12 +96,19 @@ def load_input_config(path) -> InputConfig:
                     f"name but column_headers_exist is false"
                 )
 
+        delimiter = entry.get("delimiter", ",")
+        if not isinstance(delimiter, str) or len(delimiter) != 1:
+            raise ConfigError(
+                f"Input entry {key!r} 'delimiter' must be a single character"
+            )
+
         inputs[key] = InputEntry(
             name=key,
             file=entry["file"],
             column_headers_exist=headers_exist,
             filter_columns=filters,
             query_parameters=dict(raw_params),
+            delimiter=delimiter,
         )
 
     return InputConfig(inputs=inputs)

@@ -37,6 +37,26 @@ def test_load_records_no_headers_by_number(tmp_path):
     ]
 
 
+def test_load_records_pipe_delimiter(tmp_path):
+    entry = _entry(tmp_path, "1001|EMEA|APO\n1002|APAC|ALM\n", delimiter="|")
+    records = load_csv_records(entry)
+    assert records == [
+        CsvRecord(binds={"sip_id": "1001", "region": "EMEA"}, input_values=["1001", "EMEA"]),
+        CsvRecord(binds={"sip_id": "1002", "region": "APAC"}, input_values=["1002", "APAC"]),
+    ]
+
+
+def test_pipe_delimiter_filter_applies(tmp_path):
+    entry = _entry(
+        tmp_path,
+        "1001|EMEA|APO\n1002|APAC|ALM\n1003|AMER|APO\n",
+        delimiter="|",
+        filter_columns=[FilterCondition(column=3, operator="eq", value="APO")],
+    )
+    records = load_csv_records(entry)
+    assert [r.input_values[0] for r in records] == ["1001", "1003"]
+
+
 def test_load_records_with_headers_by_name(tmp_path):
     entry = _entry(
         tmp_path,
