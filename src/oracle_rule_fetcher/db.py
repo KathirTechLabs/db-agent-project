@@ -55,8 +55,11 @@ class OracleClient:
             self._conn = None
 
 
-def fetch_rows(cursor, sql: str, limit: int) -> Table:
-    cursor.execute(sql)
+def fetch_rows(cursor, sql: str, limit: int, params: dict | None = None) -> Table:
+    if params is None:
+        cursor.execute(sql)
+    else:
+        cursor.execute(sql, params)
     rows = cursor.fetchmany(limit)
     columns = [desc[0] for desc in cursor.description]
     return Table(columns=columns, rows=[list(row) for row in rows])

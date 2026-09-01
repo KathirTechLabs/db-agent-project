@@ -13,9 +13,11 @@ class FakeCursor:
         self.description = description
         self._rows = rows
         self.executed = None
+        self.params = None
 
-    def execute(self, sql):
+    def execute(self, sql, params=None):
         self.executed = sql
+        self.params = params
 
     def fetchmany(self, size):
         return self._rows[:size]
@@ -52,3 +54,19 @@ def test_fetch_rows_returns_table_with_columns_and_rows():
     assert cursor.executed == "SELECT CUST_ID, CUST_NAME FROM CUSTOMERS"
     assert table.columns == ["CUST_ID", "CUST_NAME"]
     assert table.rows == [[1, "Alice"], [2, "Bob"]]
+
+
+def test_fetch_rows_passes_params():
+    cursor = FakeCursor(
+        description=[("ACCOUNT_ID",)],
+        rows=[(7,)],
+    )
+    table = fetch_rows(
+        cursor,
+        "SELECT ACCOUNT_ID FROM ACCOUNTS WHERE SIP_ID = :sip_id",
+        limit=10,
+        params={"sip_id": "1001"},
+    )
+    assert cursor.params == {"sip_id": "1001"}
+    assert table.columns == ["ACCOUNT_ID"]
+    assert table.rows == [[7]]
